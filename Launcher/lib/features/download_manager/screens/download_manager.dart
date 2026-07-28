@@ -17,6 +17,7 @@ import 'package:kyber_launcher/shared/ui/buttons/custom_icon_button.dart';
 import 'package:kyber_launcher/shared/ui/cards/kyber_container.dart';
 import 'package:kyber_launcher/shared/ui/utils/background_blur.dart';
 import 'package:kyber_launcher/shared/ui/utils/button_builder.dart';
+import 'package:kyber_launcher/shared/ui/elements/kyber_tab_bar.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 class DownloadManager extends StatefulWidget {
@@ -27,6 +28,8 @@ class DownloadManager extends StatefulWidget {
 }
 
 class _DownloadManagerState extends State<DownloadManager> {
+  int _selectedTab = 0;
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -59,6 +62,8 @@ class _DownloadManagerState extends State<DownloadManager> {
                       builder: (context, state) {
                         final tasks =
                             state is DownloadLoaded ? state.tasks : <TaskRecord>[];
+                        final history =
+                            state is DownloadLoaded ? state.history : <DownloadHistoryEntry>[];
                         final progressUpdate =
                             state is DownloadLoaded ? state.progressUpdate : null;
                         final currentDownload =
@@ -80,19 +85,38 @@ class _DownloadManagerState extends State<DownloadManager> {
                           crossAxisAlignment: .stretch,
                           children: [
                             const _DownloadManagerHeader(),
+                            const SizedBox(height: 10),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: SizedBox(
+                                  height: 40,
+                                  width: 240,
+                                  child: KyberTabBar(
+                                    tabs: const [
+                                      Text('ACTIVE'),
+                                      Text('HISTORY'),
+                                    ],
+                                    selectedIndex: _selectedTab,
+                                    onChanged: (i) =>
+                                        setState(() => _selectedTab = i),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
                             const CardSection(),
                             Expanded(
-                              child: Column(
-                                children: [
-                                  if (activeTasks.isNotEmpty)
-                                    _ActiveDownloadsList(
-                                      tasks: activeTasks,
-                                      progressUpdate: progressUpdate,
-                                    ),
-                                  if (pausedTasks.isNotEmpty)
-                                    _PausedDownloadsSection(tasks: pausedTasks),
-                                ],
-                              ),
+                              child: _selectedTab == 0
+                                  ? _buildActiveTab(
+                                      activeTasks,
+                                      pausedTasks,
+                                      progressUpdate,
+                                    )
+                                  : _buildHistoryTab(history),
                             ),
                             if (currentDownload != null)
                               _CurrentDownloadFooter(
@@ -111,6 +135,95 @@ class _DownloadManagerState extends State<DownloadManager> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildActiveTab(
+    List<TaskRecord> activeTasks,
+    List<TaskRecord> pausedTasks,
+    TaskProgressUpdate? progressUpdate,
+  ) {
+    if (activeTasks.isEmpty && pausedTasks.isEmpty) {
+      return const Center(
+        child: Text(
+          'No active downloads',
+          style: TextStyle(
+            fontFamily: FontFamily.battlefrontUI,
+            fontSize: 16,
+            color: kGrayColor,
+          ),
+        ),
+      );
+    }
+    return ListView(
+      children: [
+        if (activeTasks.isNotEmpty)
+          _ActiveDownloadsList(
+            tasks: activeTasks,
+            progressUpdate: progressUpdate,
+          ),
+        if (pausedTasks.isNotEmpty)
+          _PausedDownloadsSection(tasks: pausedTasks),
+      ],
+    );
+  }
+
+  Widget _buildHistoryTab(List<DownloadHistoryEntry> history) {
+    if (history.isEmpty) {
+      return const Center(
+        child: Text(
+          'No download history',
+          style: TextStyle(
+            fontFamily: FontFamily.battlefrontUI,
+            fontSize: 16,
+            color: kGrayColor,
+          ),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: .stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${history.length} item${history.length == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                    fontFamily: FontFamily.battlefrontUI,
+                    fontSize: 14,
+                    color: kGrayColor,
+                  ),
+                ),
+              ),
+              KyberIconButton(
+                iconData: FluentIcons.delete,
+                size: 16,
+                onPressed: () =>
+                    context.read<DownloadCubit>().clearHistory(),
+              ),
+            ],
+          ),
+        ),
+        const CardSection(),
+        Expanded(
+          child: ListView(
+            children: [
+              for (var i = 0; i < history.length; i++) ...[
+                if (i > 0) const CardSection(),
+                _DownloadTaskItem(
+                  task: history[i].record,
+                  isHistory: true,
+                  downloadedAt: history[i].downloadedAt,
+                  modId: history[i].modId,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -169,22 +282,18 @@ class _ActiveDownloadsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Flexible(
-      child: ListView.separated(
-        separatorBuilder: (context, index) => const CardSection(),
-        itemCount: tasks.length + 1,
-        itemBuilder: (context, index) {
-          if (index >= tasks.length) {
-            return const SizedBox.shrink();
-          }
-          final task = tasks[index];
-          return _DownloadTaskItem(
-            task: task,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < tasks.length; i++) ...[
+          if (i > 0) const CardSection(),
+          _DownloadTaskItem(
+            task: tasks[i],
             progressUpdate:
-                task.status == TaskStatus.running ? progressUpdate : null,
-          );
-        },
-      ),
+                tasks[i].status == TaskStatus.running ? progressUpdate : null,
+          ),
+        ],
+      ],
     );
   }
 }
@@ -198,6 +307,7 @@ class _PausedDownloadsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: .start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Padding(
           padding: .symmetric(horizontal: 15, vertical: 10),
@@ -212,19 +322,10 @@ class _PausedDownloadsSection extends StatelessWidget {
           ),
         ),
         const CardSection(),
-        Flexible(
-          child: ListView.separated(
-            separatorBuilder: (context, index) => const CardSection(),
-            itemCount: tasks.length + 1,
-            itemBuilder: (context, index) {
-              if (index >= tasks.length) {
-                return const SizedBox.shrink();
-              }
-              final task = tasks[index];
-              return _DownloadTaskItem(task: task, isPaused: true);
-            },
-          ),
-        ),
+        for (var i = 0; i < tasks.length; i++) ...[
+          if (i > 0) const CardSection(),
+          _DownloadTaskItem(task: tasks[i], isPaused: true),
+        ],
       ],
     );
   }
@@ -235,14 +336,21 @@ class _DownloadTaskItem extends StatelessWidget {
     required this.task,
     this.progressUpdate,
     this.isPaused = false,
+    this.isHistory = false,
+    this.downloadedAt,
+    this.modId,
   });
 
   final TaskRecord task;
   final TaskProgressUpdate? progressUpdate;
   final bool isPaused;
+  final bool isHistory;
+  final DateTime? downloadedAt;
+  final int? modId;
 
   @override
   Widget build(BuildContext context) {
+    final canRemove = isHistory || task.status.isFinalState;
     return SizedBox(
       height: 45,
       child: ButtonBuilder(
@@ -252,9 +360,17 @@ class _DownloadTaskItem extends StatelessWidget {
               _buildLeadingIcon(),
               const VCardSection(),
               Expanded(child: _buildTaskInfo()),
-              if (task.status.isNotFinalState) ...[
+              if (isHistory) ...[
+                const VCardSection(),
+                _buildHistoryMeta(context),
+              ],
+              if (!isHistory && task.status.isNotFinalState) ...[
                 const VCardSection(),
                 _buildCancelButton(),
+              ],
+              if (canRemove) ...[
+                const VCardSection(),
+                _buildRemoveButton(context),
               ],
             ],
           );
@@ -263,7 +379,107 @@ class _DownloadTaskItem extends StatelessWidget {
     );
   }
 
+  Widget _buildHistoryMeta(BuildContext context) {
+    return SizedBox(
+      width: 200,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 14),
+        child: Row(
+          children: [
+          if (task.expectedFileSize != null &&
+              task.expectedFileSize! > 0) ...[
+            Text(
+              formatBytes(task.expectedFileSize!, 1),
+              style: const TextStyle(
+                fontFamily: FontFamily.battlefrontUI,
+                fontSize: 14,
+                color: kGrayColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          if (downloadedAt != null) ...[
+            Flexible(
+              child: Text(
+                _formatDownloadedAt(downloadedAt!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: FontFamily.battlefrontUI,
+                  fontSize: 14,
+                  color: kGrayColor,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          if (modId != null)
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CustomIconButton(
+                iconData: mt.Icons.open_in_new,
+                size: 18,
+                onPressed: () {
+                  router.go('/mods/mod_browser/$modId');
+                },
+              ),
+            ),
+        ],
+      ),
+    ),
+    );
+  }
+
+  String _formatDownloadedAt(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.month}/${dt.day}/${dt.year}';
+  }
+
+  Widget _buildRemoveButton(BuildContext context) {
+    return SizedBox(
+      width: 50,
+      height: 45,
+      child: CustomIconButton(
+        iconData: FluentIcons.chrome_close,
+        onPressed: () {
+          final cubit = context.read<DownloadCubit>();
+          if (isHistory) {
+            cubit.removeHistoryItem(task.taskId);
+          } else {
+            FileDownloader().cancelTaskWithId(task.taskId);
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildLeadingIcon() {
+    if (isHistory) {
+      final iconData = switch (task.status) {
+        TaskStatus.complete => FluentIcons.completed,
+        TaskStatus.canceled => FluentIcons.cancel,
+        TaskStatus.failed => FluentIcons.error,
+        _ => FluentIcons.status_error_full,
+      };
+      final color = switch (task.status) {
+        TaskStatus.complete => kActiveColor,
+        TaskStatus.canceled => kGrayColor,
+        TaskStatus.failed => Colors.red,
+        _ => kWhiteColor,
+      };
+      return SizedBox(
+        width: 50,
+        height: 45,
+        child: Icon(iconData, color: color, size: 22),
+      );
+    }
+
     if (isPaused || task.status == .paused) {
       return SizedBox(
         width: 50,
