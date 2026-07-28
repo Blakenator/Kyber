@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui';
@@ -214,51 +213,30 @@ class DownloadOrchestrator with ChangeNotifier {
         }
       }
 
-      final downloadTask = DownloadTask(
-        url: resolved.url,
-        directory:
-            '${Platform.isMacOS ? '/' : ''}${ModService.getBasePath()}',
-        filename: resolved.filename,
-        displayName: request.displayName,
-        updates: Updates.statusAndProgress,
-        retries: 1,
-        priority: request.priority,
-        allowPause: true,
-        baseDirectory: BaseDirectory.root,
-        metaData: _encodeMetadata(request.metadata),
-        options: TaskOptions(
-          beforeTaskStart: _onBeforeStart,
-          onTaskStart: _onTaskStart,
-          onTaskFinished: _onTaskDone,
+      final result = await FileDownloader().enqueue(
+        DownloadTask(
+          url: resolved.url,
+          directory:
+              '${Platform.isMacOS ? '/' : ''}${ModService.getBasePath()}',
+          filename: resolved.filename,
+          displayName: request.displayName,
+          updates: Updates.statusAndProgress,
+          retries: 1,
+          priority: request.priority,
+          allowPause: true,
+          baseDirectory: BaseDirectory.root,
+          metaData: _encodeMetadata(request.metadata),
+          options: TaskOptions(
+            beforeTaskStart: _onBeforeStart,
+            onTaskStart: _onTaskStart,
+            onTaskFinished: _onTaskDone,
+          ),
         ),
       );
-
-      final result = await FileDownloader().enqueue(downloadTask);
 
       if (!result) {
         NotificationService.error(message: 'Failed to queue download');
         return false;
-      }
-
-      // Notify listeners immediately so the cubit refreshes its task list.
-      // The background_downloader status callbacks may not fire for
-      // transitional states (enqueued/running), which previously caused
-      // the download manager UI to never show the download.
-      try {
-        final record = await FileDownloader().database.recordForId(
-          downloadTask.taskId,
-        );
-        if (record != null) {
-          _statusUpdates.add(
-            TaskStatusUpdate(
-              downloadTask,
-              record.status ?? TaskStatus.enqueued,
-            ),
-          );
-          notifyListeners();
-        }
-      } catch (e, s) {
-        _logger.warning('Failed to push initial status update', e, s);
       }
 
       _logger.info('Enqueued download: ${request.displayName}');
@@ -396,28 +374,22 @@ class DownloadOrchestrator with ChangeNotifier {
       'Task status update: ${update.task.taskId} - ${update.status}',
     );
 
-    try {
-      if (update.status == .complete) {
-        await sl.isReady<ModService>();
-        await sl.get<ModService>().refresh();
+    if (update.status == .complete) {
+      await sl.isReady<ModService>();
+      await sl.get<ModService>().refresh();
 
-        await _checkAndCancelDuplicates(update);
-      } else if (update.status == .failed) {
-        await _handleFailedDownload(update);
-      } else if (update.status == .running) {
-        await _platformIntegration.updateProgress(0);
-      }
+      await _checkAndCancelDuplicates(update);
+    } else if (update.status == .failed) {
+      await _handleFailedDownload(update);
+    } else if (update.status == .running) {
+      await _platformIntegration.updateProgress(0);
+    }
 
-      if (update.status == .canceled ||
-          update.status == .complete ||
-          update.status == .failed ||
-          update.status == .paused) {
-        await _platformIntegration.clear();
-      }
-    } catch (e, s) {
-      // Ensure exceptions in platform integration or side-effect handlers
-      // don't prevent the status update from reaching listeners.
-      _logger.warning('Error handling status update side-effects', e, s);
+    if (update.status == .canceled ||
+        update.status == .complete ||
+        update.status == .failed ||
+        update.status == .paused) {
+      await _platformIntegration.clear();
     }
 
     _statusUpdates.add(update);
@@ -429,12 +401,8 @@ class DownloadOrchestrator with ChangeNotifier {
       'Task progress: ${update.task.taskId} - ${(update.progress * 100).toStringAsFixed(1)}%',
     );
 
-    try {
-      if (update.progress > 0 && update.progress < 1) {
-        await _platformIntegration.updateProgress(update.progress);
-      }
-    } catch (e, s) {
-      _logger.warning('Error updating platform progress', e, s);
+    if (update.progress > 0 && update.progress < 1) {
+      await _platformIntegration.updateProgress(update.progress);
     }
 
     _progressUpdates.add(update);
@@ -455,12 +423,15 @@ class DownloadOrchestrator with ChangeNotifier {
       }
 
       try {
-        final name = metadata['name'] as String? ?? '';
-        final version = metadata['version'] as String? ?? '';
-        _logger.info('Processing queued download for $name ($version)');
+        final mod = ServerMod.fromJson(task.task.metaData);
+        _logger.info(
+          'Processing queued download for ${mod.name} (${mod.version})',
+        );
 
-        if (ModHelper.isInstalled(name, version)) {
-          _logger.info('Mod $name is already installed. Skipping download.');
+        if (ModHelper.isInstalled(mod.name, mod.version)) {
+          _logger.info(
+            'Mod ${mod.name} is already installed. Skipping download.',
+          );
           await FileDownloader().cancelTaskWithId(task.task.taskId);
         }
       } catch (e) {
@@ -505,75 +476,11 @@ class DownloadOrchestrator with ChangeNotifier {
       print('[${record.loggerName}] ${record.level.name}: ${record.message}');
     });
 
-    // Snapshot .fbmod files BEFORE extraction
-    final beforeFiles =
-        Directory(update.task.directory)
-            .listSync()
-            .whereType<File>()
-            .where((f) => extension(f.path) == '.fbmod' || extension(f.path) == '.fbfile')
-            .map((f) => basename(f.path))
-            .toSet();
-
     final postProcessor = DownloadPostProcessor();
     await postProcessor.processCompletedDownload(
       update,
       onProgress: onProgress,
     );
-
-    // Persist the NexusMods mod ID in a global manifest.
-    // Primary source: metadata (set by FileDownloadDialog).
-    try {
-      final metaDataStr = update.task.metaData;
-      var modId = _parseModIdFromMetadata(metaDataStr);
-
-      if (modId == null) {
-        final match = RegExp(r'/mods/(\d+)').firstMatch(update.task.url);
-        if (match != null) modId = int.tryParse(match.group(1)!);
-      }
-
-      if (modId == null) return;
-
-      final manifest = await ModService.readManifest();
-
-      final files = (manifest['files'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-      final mods = (manifest['mods'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-
-      final modMeta = _decodeMetadata(update.task.metaData);
-      final modTitle = modMeta?['name'] as String? ?? update.task.displayName;
-      final modVersion = modMeta?['version'] as String? ?? '';
-
-      mods[modId.toString()] = <String, dynamic>{
-        'title': modTitle,
-        'latestVersion': modVersion,
-        'lastDownloaded': DateTime.now().toIso8601String(),
-      };
-
-      // Snapshot AFTER extraction to find new .fbmod files
-      await Future.delayed(const Duration(milliseconds: 500));
-      final afterFiles =
-          Directory(update.task.directory)
-              .listSync()
-              .whereType<File>()
-              .where((f) => extension(f.path) == '.fbmod' || extension(f.path) == '.fbfile')
-              .map((f) => basename(f.path))
-              .toSet();
-
-      final newFiles = afterFiles.difference(beforeFiles);
-
-      if (newFiles.isEmpty) {
-        files[basename(update.task.filename)] = modId;
-      } else {
-        for (final file in newFiles) {
-          files[file] = modId;
-        }
-      }
-
-      manifest['files'] = files;
-      manifest['mods'] = mods;
-      await ModService.writeManifest(manifest);
-    } catch (_) {
-      // Non-critical — manifest is a best-effort cache
-    }
   }
 
   String _encodeMetadata(Map<String, dynamic>? metadata) {
@@ -588,66 +495,19 @@ class DownloadOrchestrator with ChangeNotifier {
         link: metadata['link'] as String? ?? '',
         fileSize: Int64(metadata['fileSize'] as int? ?? 0),
       );
-      final result = <String, dynamic>{
-        'serverMod': serverMod.writeToJson(),
-      };
-      final modId = metadata['modId'];
-      if (modId != null) {
-        result['modId'] = modId;
-      }
-      return jsonEncode(result);
+      return serverMod.writeToJson();
     } catch (e) {
       _logger.warning('Failed to encode metadata: $e');
       return '';
     }
   }
 
-  /// Parses a mod ID from metadata. Handles new wrapper format
-  /// (`{"serverMod":..., "modId":2042}`) and legacy plain ServerMod JSON.
-  static int? _parseModIdFromMetadata(String metaDataString) {
-    if (metaDataString.isEmpty) return null;
-    try {
-      final decoded = jsonDecode(metaDataString);
-      if (decoded is Map<String, dynamic>) {
-        final modId = decoded['modId'];
-        if (modId != null) return (modId as num).toInt();
-        // Legacy format: try to parse as ServerMod and extract from link
-        if (decoded.containsKey('link')) {
-          final link = decoded['link'] as String? ?? '';
-          final match = RegExp(r'/mods/(\d+)').firstMatch(link);
-          if (match != null) return int.tryParse(match.group(1)!);
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  static Map<String, dynamic>? _decodeMetadata(String metaDataString) {
+  Map<String, dynamic>? _decodeMetadata(String metaDataString) {
     if (metaDataString.isEmpty) {
       return null;
     }
 
     try {
-      // Try new wrapper format first: {"serverMod": "...", "modId": 2042}
-      final decoded = jsonDecode(metaDataString);
-      if (decoded is Map<String, dynamic> && decoded.containsKey('serverMod')) {
-        final serverMod = ServerMod.fromJson(decoded['serverMod'] as String);
-        final result = <String, dynamic>{
-          'name': serverMod.name,
-          'version': serverMod.version,
-          'link': serverMod.link,
-          'fileSize': serverMod.fileSize.toInt(),
-        };
-        final modId = decoded['modId'];
-        if (modId != null) result['modId'] = modId;
-        return result;
-      }
-    } catch (_) {
-      // Fall through to legacy format
-    }
-
-    try {
-      // Legacy format: plain ServerMod JSON
       final serverMod = ServerMod.fromJson(metaDataString);
       return {
         'name': serverMod.name,
