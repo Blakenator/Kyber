@@ -30,6 +30,7 @@ service Server {
 
   // RPCs for modifying a running server
   rpc LoadLevel(LoadLevelRequest) returns (kyber_common.Empty);
+  rpc SetMapRotation(SetMapRotationRequest) returns (kyber_common.Empty);
 
   // Global RPCs
   rpc SetProxyList(SetProxyListRequest) returns (kyber_common.Empty);
@@ -152,6 +153,11 @@ message LoadLevelRequest {
   kyber_common.LevelSetup levelSetup = 1;
 }
 
+message SetMapRotationRequest {
+  repeated kyber_common.LevelSetup rotation = 1;
+  uint32 current = 2;
+}
+
 message CommonState {
   bool vivoxInitialized = 1;
 
@@ -170,6 +176,7 @@ message ServerState {
   kyber_common.LevelSetup levelSetup = 2;
   uint32 mapRotationIndex = 3;
   repeated kyber_common.ServerPlayer playerList = 4;
+  repeated kyber_common.LevelSetup mapRotation = 5;
 }
 
 message SetProxyListRequest {

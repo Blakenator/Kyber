@@ -61,7 +61,7 @@ class _ServerSettingsBoxState extends State<ServerSettingsBox> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            height: 180,
+            height: 200,
             child: Panel(
               background: const HostingBackgroundImage(),
               child: SettingsBoxHeader(

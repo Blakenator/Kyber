@@ -32,7 +32,26 @@ ServerUnaryReactor* CommonInterfaceService::GetInfo(
         server->mutable_levelsetup()->set_map(g_program->m_server->m_currentLevel);
         server->mutable_levelsetup()->set_mode(g_program->m_server->m_currentMode);
 
-        server->set_maprotationindex(0);
+        // Report the position of the currently playing map within the rotation
+        uint32_t mapRotationIndex = 0;
+        const auto& rotationEntries = g_program->m_server->m_mapRotation.GetEntries();
+        for (size_t i = 0; i < rotationEntries.size(); ++i)
+        {
+            if (rotationEntries[i].level == g_program->m_server->m_currentLevel &&
+                rotationEntries[i].mode == g_program->m_server->m_currentMode)
+            {
+                mapRotationIndex = static_cast<uint32_t>(i);
+                break;
+            }
+        }
+        server->set_maprotationindex(mapRotationIndex);
+
+        for (const auto& entry : rotationEntries)
+        {
+            kyber_common::LevelSetup* setup = server->add_maprotation();
+            setup->set_map(entry.level);
+            setup->set_mode(entry.mode);
+        }
 
         for (ServerPlayer* player : g_program->m_server->m_playerManager->m_players)
         {

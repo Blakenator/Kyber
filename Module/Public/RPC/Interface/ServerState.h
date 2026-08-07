@@ -18,5 +18,7 @@ public:
         kyber_interface::ServerState* response) override;
     ServerUnaryReactor* LoadLevel(
         CallbackServerContext* context, const kyber_interface::LoadLevelRequest* request, kyber_common::Empty* response) override;
+    ServerUnaryReactor* SetMapRotation(CallbackServerContext* context,
+        const kyber_interface::SetMapRotationRequest* request, kyber_common::Empty* response) override;
 };
 } // namespace Kyber

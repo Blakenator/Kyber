@@ -7,6 +7,43 @@
 
 ------
 
+## One-Command Local Dev (Launcher + Module)
+
+For iterating on the Launcher and the C++ Module, run the dev script from the repository root. It handles bootstrap, proto/FFI generation, the Bazel module build + deploy, and `flutter run`:
+
+```bash
+# Windows
+.\dev.ps1
+
+# Linux/macOS
+./dev.sh
+```
+
+This does **not** require a local API instance — the launcher talks to the module directly over localhost gRPC and uses the public API (prod/stage) for the server browser and moderation as normal.
+
+Flags (both scripts):
+
+| Flag | Meaning |
+|------|---------|
+| `-Bootstrap` / `--bootstrap` | Run `melos bootstrap` first (first checkout / new deps). Auto-runs if `.dart_tool` is missing. |
+| `-SkipGenerate` / `--skip-generate` | Skip proto + FFI code generation (do this after proto changes too). |
+| `-SkipModule` / `--skip-module` | Skip the Bazel module build + deploy (fast Dart-only iteration). |
+| `-Force` / `--force` | Clean the Bazel cache before building the module (full rebuild). |
+
+Note: the C++ Module can only be built on Windows/MSVC. On Windows, `dev.sh` (run from Git Bash/MSYS) automatically delegates to `dev.ps1` because Git Bash cannot execute the `melos.bat` shim; use either entry point.
+
+The dev scripts preflight `dart`, `flutter`, `protoc`, and `melos`, and if `bazel` is missing they automatically download [bazelisk](https://github.com/bazelbuild/bazelisk) to `%LOCALAPPDATA%\Kyber\bazel\bazel.exe` (the Module's `.bazelversion` pins Bazel 8.0.0). You can still install bazelisk manually and put it on your `PATH` as `bazel.exe` if you prefer.
+
+`dev.ps1` also auto-selects the **newest installed MSVC toolchain** and pins Bazel to it via `BAZEL_VC` / `BAZEL_VC_FULL_VERSION`. This matters because the Module's `ThirdParty/safetyhook` requires the C++23 `<expected>` header, which needs **Visual Studio 2022 / MSVC 14.3x+**. Bazel's auto-detection (`vswhere`) only sees *registered* VS installs and may pick an older compiler (e.g. VS 2019 / 14.29), which fails with `fatal error C1083: Cannot open include file: 'expected'`. If you build with `build.bat` directly, set `BAZEL_VC` (and `BAZEL_VC_FULL_VERSION`) to your VS 2022 Build Tools `VC` folder (e.g. `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC`).
+
+For a `flutter run`-only loop (Dart changes only, module already built):
+
+```bash
+.\dev.ps1 -SkipModule -SkipGenerate
+```
+
+------
+
 ## Dart/Flutter Projects (Launcher, CLI, Packages)
 
 ### Prequisites

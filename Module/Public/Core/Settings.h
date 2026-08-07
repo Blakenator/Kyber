@@ -25,12 +25,27 @@ class MapRotation
 public:
     const MapRotationEntry& GetNextEntry()
     {
-        if (m_current + 1 > m_entries.size())
+        if (m_current >= m_entries.size())
         {
             m_current = 0;
         }
 
         return m_entries[m_current++];
+    }
+
+    uint16_t GetCurrentIndex() const
+    {
+        return m_current;
+    }
+
+    void SetCurrentIndex(uint16_t index)
+    {
+        m_current = index;
+    }
+
+    const std::vector<MapRotationEntry>& GetEntries() const
+    {
+        return m_entries;
     }
 
     void Reset()
@@ -46,7 +61,7 @@ public:
 
 private:
     std::vector<MapRotationEntry> m_entries;
-    uint16_t m_current;
+    uint16_t m_current = 0;
 };
 
 class KyberSettingsManager

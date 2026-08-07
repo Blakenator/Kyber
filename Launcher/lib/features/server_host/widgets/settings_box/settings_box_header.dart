@@ -8,6 +8,8 @@ import 'package:kyber/kyber.dart' hide ServerMod;
 import 'package:kyber_launcher/core/config/colors.dart';
 import 'package:kyber_launcher/core/services/image_helper.dart';
 import 'package:kyber_launcher/core/services/notification_service.dart';
+import 'package:kyber_launcher/features/kyber/providers/kyber_status_cubit.dart';
+import 'package:kyber_launcher/features/kyber/services/map_helper.dart';
 import 'package:kyber_launcher/features/map_rotation/models/map_rotation_entry.dart';
 import 'package:kyber_launcher/features/map_rotation/providers/map_rotation_cubit.dart';
 import 'package:kyber_launcher/features/maxima/helper/maxima_helper.dart';
@@ -16,9 +18,117 @@ import 'package:kyber_launcher/features/mods/services/level_declaration_service.
 import 'package:kyber_launcher/features/server_host/providers/host_collection_cubit.dart';
 import 'package:kyber_launcher/features/server_host/widgets/settings_box/server_settings_box.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
+import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/injection_container.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
 import 'package:logging/logging.dart';
+
+/// Compact display of the currently playing map + mode and its position in the
+/// server's map rotation. Reads directly from the server state (server SOT).
+class _CurrentMapRow extends StatelessWidget {
+  const _CurrentMapRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<KyberStatusCubit, KyberStatusState>(
+      builder: (context, statusState) {
+        if (statusState is! KyberStatusHosting) {
+          return const SizedBox.shrink();
+        }
+
+        final serverState = statusState.serverState;
+        final rotation = serverState.mapRotation;
+        final index = serverState.mapRotationIndex;
+        final total = rotation.length;
+
+        // Prefer the exact loaded level; fall back to the rotation entry the
+        // server reports as current until the level has actually loaded.
+        var map = serverState.levelSetup.map;
+        var mode = serverState.levelSetup.mode;
+        if (map.isEmpty && index >= 0 && index < rotation.length) {
+          map = rotation[index].map;
+          mode = rotation[index].mode;
+        } else if (map.isEmpty && rotation.isNotEmpty) {
+          map = rotation.first.map;
+          mode = rotation.first.mode;
+        }
+        if (map.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final gameMode = MapHelper.getMode(mode);
+        final mapName =
+            gameMode != null ? MapHelper.getMapName(gameMode, map) : map;
+        final modeName = gameMode?.name ?? mode;
+        final image = MapHelper.getImageForMap(map);
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .4),
+            borderRadius: BorderRadius.circular(kDefaultInnerBorderRadius),
+            border: Border.all(color: decoColor, width: 2),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Row(
+            children: [
+              if (image != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: 44,
+                    height: 26,
+                    child: image.image(fit: BoxFit.cover),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        mapName,
+                        style: const TextStyle(
+                          fontFamily: FontFamily.battlefrontUI,
+                          fontSize: 14,
+                          color: kWhiteColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        modeName,
+                        style: const TextStyle(
+                          fontFamily: FontFamily.battlefrontUI,
+                          fontSize: 12,
+                          color: kInactiveColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                total > 0 ? '${index + 1} / $total' : '',
+                style: const TextStyle(
+                  fontFamily: FontFamily.battlefrontUI,
+                  fontSize: 11,
+                  color: kInactiveColor,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
 
 class SettingsBoxHeader extends StatelessWidget {
   const SettingsBoxHeader({
@@ -188,7 +298,11 @@ class SettingsBoxHeader extends StatelessWidget {
             },
           ),
           const SizedBox(
-            height: 10,
+            height: 8,
+          ),
+          const _CurrentMapRow(),
+          const SizedBox(
+            height: 8,
           ),
 
           //FractionallySizedBox(
@@ -199,7 +313,7 @@ class SettingsBoxHeader extends StatelessWidget {
           //  ),
           //),
           const SizedBox(
-            height: 30,
+            height: 8,
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

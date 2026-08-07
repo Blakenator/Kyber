@@ -8,6 +8,7 @@ import 'package:kyber_launcher/features/server_host/providers/host_search_cubit.
 import 'package:kyber_launcher/features/server_host/widgets/create_server/map_rotation_page.dart';
 import 'package:kyber_launcher/features/server_host/widgets/create_server/mod_collection_selector.dart';
 import 'package:kyber_launcher/features/server_host/widgets/hosting_default_card.dart';
+import 'package:kyber_launcher/features/server_host/widgets/ingame_rotation.dart';
 import 'package:kyber_launcher/features/server_host/widgets/settings_box/server_settings_box.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
@@ -116,11 +117,12 @@ class _ServerHostState extends State<ServerHost> {
                       ],
                       if (state.selected) ...[
                         SizedBox(
-                          width: 250,
+                          width: 300,
                           child: KyberTabBar(
                             tabs: const [
                               Text('MODERATE'),
                               Text('MANAGE'),
+                              Text('ROTATION'),
                             ],
                             onChanged: (selectedIndex) {
                               context.read<HostSearchCubit>().clear();
@@ -210,6 +212,9 @@ class _ServerHostState extends State<ServerHost> {
                   }
 
                   if (state.selected) {
+                    if (_currentPage == 2) {
+                      return const IngameRotation();
+                    }
                     return ServerModeration(
                       selectedPage: _currentPage,
                     );
