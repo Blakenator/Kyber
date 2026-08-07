@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:kyber_launcher/features/server_host/widgets/settings_box/server_settings_box.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
+import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
 
 class IngameSettings extends StatelessWidget {
@@ -45,16 +46,31 @@ class IngameSettings extends StatelessWidget {
               name: 'botDifficulty',
               initialValue: 3,
               builder: (field) {
-                return KyberTableSelector<int>(
-                  items: const [
-                    KyberSelectorItem(title: 'Easy', value: 12),
-                    KyberSelectorItem(title: 'Medium', value: 9),
-                    KyberSelectorItem(title: 'Hard', value: 6),
-                    KyberSelectorItem(title: 'Knight', value: 3),
-                    KyberSelectorItem(title: 'Master', value: 0),
+                return KyberDropdown<int>(
+                  items: [
+                    DropdownItem(value: 12, label: 'Easy'),
+                    DropdownItem(value: 9, label: 'Medium'),
+                    DropdownItem(value: 6, label: 'Hard'),
+                    DropdownItem(value: 3, label: 'Knight'),
+                    DropdownItem(value: 0, label: 'Master'),
                   ],
-                  value: field.value,
-                  hover: hovered,
+                  selectedItem: field.value,
+                  placeholder: 'SELECT DIFFICULTY',
+                  itemBuilder: (item) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        item.label,
+                        style: const TextStyle(
+                          fontFamily: FontFamily.battlefrontUI,
+                          fontSize: 18,
+                        ),
+                      ),
+                    );
+                  },
                   onChanged: (value) {
                     field.didChange(value);
                     context.read<ModerationCubit>().sendCommand(
@@ -67,7 +83,7 @@ class IngameSettings extends StatelessWidget {
           },
         ),
         KyberTableItem.custom(
-          title: 'Bots Team 1',
+          title: 'Bots Light Side',
           builder: (hovered) {
             return FormBuilderField<int>(
               name: 'botsTeam1',
@@ -91,7 +107,7 @@ class IngameSettings extends StatelessWidget {
           },
         ),
         KyberTableItem.custom(
-          title: 'Bots Team 2',
+          title: 'Bots Dark Side',
           builder: (hovered) {
             return FormBuilderField<int>(
               name: 'botsTeam2',
