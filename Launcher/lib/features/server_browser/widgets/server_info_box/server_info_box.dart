@@ -72,9 +72,10 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedServer =
-        context.read<ServerBrowserCubit>().state.selectedServer ??
-        widget.server;
+    // Base the tab layout on the server this box is actually displaying.
+    // Using the browser's global selection here breaks the INFO/SERVERS tab
+    // indexes in the host UI, where that selection is stale or null.
+    final selectedServer = widget.server;
     return FutureBuilder(
       future: sl.isReady<ModService>(),
       builder: (context, snapshot) {
@@ -399,7 +400,7 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
                   ),
                 ),
               ] else if (serverInfo.description.isNotEmpty &&
-                  selectedIndex == (selectedServer is ServerGroup ? 2 : 1)) ...[
+                  selectedIndex == 1) ...[
                 Expanded(
                   child: BackgroundBlur(
                     borderRadius: const BorderRadius.vertical(
@@ -461,7 +462,8 @@ class _ServerInfoBoxState extends State<ServerInfoBox> {
                     ),
                   ),
                 ),
-              ] else if (selectedIndex == 1 &&
+              ] else if (selectedIndex ==
+                      (serverInfo.description.isNotEmpty ? 2 : 1) &&
                   selectedServer is ServerGroup) ...[
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(

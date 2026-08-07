@@ -56,11 +56,13 @@ class ServerButtonRow extends StatelessWidget {
             }
 
             return KyberButton(
-              onPressed: onServerSelected ?? (!disabled ?
-                        () async {
+              onPressed:
+                  onServerSelected ??
+                  (!disabled
+                      ? () async {
                           context.read<ServerBrowserCubit>().joinServer();
                         }
-                  : null),
+                      : null),
               text: onServerSelected != null
                   ? 'MODERATE'
                   : hasModsInstalled
@@ -79,8 +81,13 @@ class ServerButtonRow extends StatelessWidget {
               tabs: [
                 const Text('MODS'),
                 if (server.description.isNotEmpty) const Text('INFO'),
-                if (context.read<ServerBrowserCubit>().state.selectedServer
-                    is ServerGroup)
+                // The SERVERS tab only applies in the server browser, where the
+                // selected server may be a ServerGroup. In the host UI
+                // (moderation mode) the server is always a single Server, so
+                // never show it there even if a stale group selection exists.
+                if (onServerSelected == null &&
+                    context.read<ServerBrowserCubit>().state.selectedServer
+                        is ServerGroup)
                   const Text('SERVERS'),
               ],
               onChanged: onPageChanged ?? (index) {},

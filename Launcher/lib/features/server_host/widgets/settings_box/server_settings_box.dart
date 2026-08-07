@@ -96,7 +96,10 @@ class _ServerSettingsBoxState extends State<ServerSettingsBox> {
                       child:
                           BlocBuilder<ModerationCubit, ModerationServerState>(
                             builder: (context, state) {
-                              if (state.selected) {
+                              // Live server controls live on the Settings tab;
+                              // the Info tab shows the description editor just
+                              // like in the create-server flow.
+                              if (state.selected && selectedPage == 0) {
                                 return SuperListView(
                                   children: const [
                                     KyberSectionDropdown(
@@ -165,6 +168,13 @@ class _ServerSettingsBoxState extends State<ServerSettingsBox> {
                                             fontSize: 16,
                                             color: kWhiteColor,
                                           ),
+                                          // When editing an existing server,
+                                          // prefill with its current
+                                          // description. Falls through to the
+                                          // form's initialValue otherwise.
+                                          initialValue: state.selected
+                                              ? state.server?.description
+                                              : null,
                                           name: 'description',
                                           expands: true,
                                           maxLines: null,
