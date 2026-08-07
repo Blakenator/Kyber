@@ -12,6 +12,7 @@ import 'package:kyber_launcher/features/maxima/providers/maxima_cubit.dart';
 import 'package:kyber_launcher/features/mod_browser/screens/mod_details.dart';
 import 'package:kyber_launcher/features/server_browser/dialogs/join_server_dialog.dart';
 import 'package:kyber_launcher/features/server_browser/widgets/server_list/server_list_header.dart';
+import 'package:kyber_launcher/features/server_host/providers/host_search_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/dialogs/moderation_ban_dialog.dart';
 import 'package:kyber_launcher/features/server_moderation/dialogs/moderation_input_dialog.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
@@ -258,11 +259,18 @@ class _ConsoleState extends State<_Console> {
 
   @override
   Widget build(BuildContext context) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     return Column(
       children: [
         Expanded(
           child: BlocBuilder<ModerationCubit, ModerationServerState>(
             builder: (context, state) {
+              final query = searchQuery.trim().toLowerCase();
+              final commands = state.commands
+                  .where((item) => item.toLowerCase().contains(query))
+                  .toList();
               return SingleChildScrollView(
                 reverse: true,
                 padding: const EdgeInsets.symmetric(
@@ -272,7 +280,7 @@ class _ConsoleState extends State<_Console> {
                 child: SelectionArea(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: state.commands.map((item) {
+                    children: commands.map((item) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 3),
                         child: Text.rich(
@@ -436,9 +444,19 @@ class _PunishmentContainerState extends State<_PunishmentContainer> {
 
   @override
   Widget build(BuildContext context) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     return BlocBuilder<ModerationCubit, ModerationServerState>(
       builder: (context, state) {
-        final punishments = state.punishments;
+        final query = searchQuery.trim().toLowerCase();
+        final punishments = state.punishments
+            .where(
+              (punishment) =>
+                  punishment.user.name.toLowerCase().contains(query) ||
+                  punishment.reason.toLowerCase().contains(query),
+            )
+            .toList();
         return SuperListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           itemBuilder: (context, index) {
@@ -647,9 +665,15 @@ class _Punishment extends StatelessWidget {
 class _ModeratorContainerState extends State<_ModeratorContainer> {
   @override
   Widget build(BuildContext context) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     return BlocBuilder<ModerationCubit, ModerationServerState>(
       builder: (context, state) {
-        final moderators = state.moderators;
+        final query = searchQuery.trim().toLowerCase();
+        final moderators = state.moderators
+            .where((player) => player.name.toLowerCase().contains(query))
+            .toList();
         return SuperListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           itemBuilder: (context, index) {
@@ -793,10 +817,18 @@ class _TeamContainer extends StatefulWidget {
 class _TeamContainerState extends State<_TeamContainer> {
   @override
   Widget build(BuildContext context) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     return BlocBuilder<ModerationCubit, ModerationServerState>(
       builder: (context, state) {
+        final query = searchQuery.trim().toLowerCase();
         final players = state.players
-            .where((element) => element.teamId == widget.teamId)
+            .where(
+              (element) =>
+                  element.teamId == widget.teamId &&
+                  element.name.toLowerCase().contains(query),
+            )
             .toList();
         return SuperListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),

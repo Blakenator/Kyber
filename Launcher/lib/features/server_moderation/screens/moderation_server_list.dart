@@ -8,6 +8,7 @@ import 'package:kyber_launcher/features/kyber/models/maps.dart';
 import 'package:kyber_launcher/features/kyber/models/mode.dart';
 import 'package:kyber_launcher/features/kyber/models/modes.dart';
 import 'package:kyber_launcher/features/server_browser/widgets/server_list/entry.dart';
+import 'package:kyber_launcher/features/server_host/providers/host_search_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_servers_cubit.dart';
 import 'package:kyber_launcher/shared/ui/ui.dart';
@@ -32,6 +33,9 @@ class _ModerationServerListState extends State<ModerationServerList> {
 
   @override
   Widget build(BuildContext context) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     return Column(
       children: [
         Expanded(
@@ -56,7 +60,13 @@ class _ModerationServerListState extends State<ModerationServerList> {
                         duration: const Duration(milliseconds: 100),
                         child: Builder(
                           builder: (_) {
-                            final servers = state.servers;
+                            final query = searchQuery.trim().toLowerCase();
+                            final servers = state.servers
+                                .where(
+                                  (server) =>
+                                      server.name.toLowerCase().contains(query),
+                                )
+                                .toList();
 
                             if (servers.isEmpty) {
                               return Center(

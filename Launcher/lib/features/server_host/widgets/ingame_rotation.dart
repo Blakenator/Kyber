@@ -15,6 +15,7 @@ import 'package:kyber_launcher/features/map_rotation/models/map_rotation_entry.d
 import 'package:kyber_launcher/features/maxima/models/maxima_game_instance.dart';
 import 'package:kyber_launcher/features/server_browser/dialogs/load_map_dialog.dart';
 import 'package:kyber_launcher/features/server_host/providers/host_collection_cubit.dart';
+import 'package:kyber_launcher/features/server_host/providers/host_search_cubit.dart';
 import 'package:kyber_launcher/features/server_moderation/providers/moderation_cubit.dart';
 import 'package:kyber_launcher/gen/fonts.gen.dart';
 import 'package:kyber_launcher/injection_container.dart';
@@ -101,6 +102,9 @@ class _IngameRotationState extends State<IngameRotation> {
   }
 
   Widget _buildContent(BuildContext context, KyberStatusHosting status) {
+    final searchQuery = context.select<HostSearchCubit, String>(
+      (c) => c.state.searchQuery,
+    );
     final playingMap = status.serverState.levelSetup.map;
     final playingMode = status.serverState.levelSetup.mode;
     // Prefer the server-reported index (authoritative); fall back to matching
@@ -112,6 +116,25 @@ class _IngameRotationState extends State<IngameRotation> {
       );
     }
 
+    // Visible entries (real indices into `_rotation`) filtered by search.
+    // Reordering is only allowed with no filter active so drag indices stay
+    // unambiguous.
+    final query = searchQuery.trim().toLowerCase();
+    final visible = <int>[];
+    for (var i = 0; i < _rotation.length; i++) {
+      final entry = _rotation[i];
+      final mode = MapHelper.getMode(entry.mode);
+      final mapName =
+          (mode != null ? MapHelper.getMapName(mode, entry.map) : entry.map)
+              .toLowerCase();
+      final modeName = (mode?.name ?? entry.mode).toLowerCase();
+      if (query.isEmpty ||
+          mapName.contains(query) ||
+          modeName.contains(query)) {
+        visible.add(i);
+      }
+    }
+
     return Column(
       children: [
         Padding(
@@ -121,9 +144,9 @@ class _IngameRotationState extends State<IngameRotation> {
               KyberButton(
                 text: 'SKIP MAP',
                 icon: const Icon(mt.Icons.skip_next),
-                onPressed: () => context
-                    .read<ModerationCubit>()
-                    .sendCommand('/Kyber.restart'),
+                onPressed: () => context.read<ModerationCubit>().sendCommand(
+                  '/Kyber.restart',
+                ),
               ),
               const SizedBox(width: 10),
               KyberButton(
@@ -160,25 +183,61 @@ class _IngameRotationState extends State<IngameRotation> {
                     ),
                   ),
                 )
-              : ReorderableListView.builder(
+              : visible.isEmpty
+              ? const Align(
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'No maps match your search',
+                      style: TextStyle(
+                        fontFamily: FontFamily.battlefrontUI,
+                        fontSize: 16,
+                        color: kInactiveColor,
+                      ),
+                    ),
+                  ),
+                )
+              : query.isEmpty
+              ? ReorderableListView.builder(
                   buildDefaultDragHandles: false,
                   padding: const EdgeInsets.all(10),
-                  itemCount: _rotation.length,
+                  itemCount: visible.length,
                   onReorderItem: _onReorder,
-                  itemBuilder: (context, index) {
-                    final entry = _rotation[index];
-                    return _RotationTile(
-                      key: ValueKey('$index-${entry.map}-${entry.mode}'),
-                      index: index,
-                      entry: entry,
-                      isCurrent: index == currentIndex,
-                      onRemove: () => _removeAt(index),
-                      onJump: () => _jumpTo(entry),
-                    );
-                  },
+                  itemBuilder: (context, index) => _buildTile(
+                    visible[index],
+                    canReorder: true,
+                    currentIndex: currentIndex,
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(10),
+                  itemCount: visible.length,
+                  itemBuilder: (context, index) => _buildTile(
+                    visible[index],
+                    canReorder: false,
+                    currentIndex: currentIndex,
+                  ),
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTile(
+    int realIndex, {
+    required bool canReorder,
+    required int currentIndex,
+  }) {
+    final entry = _rotation[realIndex];
+    return _RotationTile(
+      key: ValueKey('$realIndex-${entry.map}-${entry.mode}'),
+      index: realIndex,
+      entry: entry,
+      isCurrent: realIndex == currentIndex,
+      onRemove: () => _removeAt(realIndex),
+      onJump: () => _jumpTo(entry),
+      canReorder: canReorder,
     );
   }
 
@@ -219,9 +278,9 @@ class _IngameRotationState extends State<IngameRotation> {
   }
 
   void _jumpTo(LevelSetup entry) {
-    context
-        .read<ModerationCubit>()
-        .sendCommand('/Kyber.LoadLevel ${entry.map} ${entry.mode}');
+    context.read<ModerationCubit>().sendCommand(
+      '/Kyber.LoadLevel ${entry.map} ${entry.mode}',
+    );
   }
 
   Future<void> _save() async {
@@ -281,6 +340,7 @@ class _RotationTile extends StatelessWidget {
     required this.isCurrent,
     required this.onRemove,
     required this.onJump,
+    this.canReorder = true,
     super.key,
   });
 
@@ -289,6 +349,7 @@ class _RotationTile extends StatelessWidget {
   final bool isCurrent;
   final VoidCallback onRemove;
   final VoidCallback onJump;
+  final bool canReorder;
 
   @override
   Widget build(BuildContext context) {
@@ -379,21 +440,22 @@ class _RotationTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            ReorderableDragStartListener(
-              index: index,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Transform.rotate(
-                  // 90 degrees
-                  angle: 1.57,
-                  child: const Icon(
-                    mt.Icons.drag_indicator,
-                    size: 20,
-                    color: kInactiveColor,
+            if (canReorder)
+              ReorderableDragStartListener(
+                index: index,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Transform.rotate(
+                    // 90 degrees
+                    angle: 1.57,
+                    child: const Icon(
+                      mt.Icons.drag_indicator,
+                      size: 20,
+                      color: kInactiveColor,
+                    ),
                   ),
                 ),
               ),
-            ),
             IconButton(
               onPressed: onRemove,
               icon: const Icon(mt.Icons.close, size: 16),
